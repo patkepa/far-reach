@@ -84,7 +84,7 @@ async fn run(remote: Remote, request: WireRequest, firmware: Option<PathBuf>) ->
     let conn = endpoint
         .connect(remote_addr, ALPN)
         .await
-        .map_err(|err| anyhow!("failed to connect to agent: {err:#}"))?;
+        .map_err(|err| anyhow!("failed to connect to server: {err:#}"))?;
     let (mut send, mut recv) = conn
         .open_bi()
         .await
@@ -107,8 +107,15 @@ async fn run(remote: Remote, request: WireRequest, firmware: Option<PathBuf>) ->
     let mut success = None;
     while let Some(event) = read_json::<_, WireEvent>(&mut recv).await? {
         match event {
-            WireEvent::Accepted { peer } => println!("accepted by agent as peer {peer}"),
+            WireEvent::Accepted { peer } => println!("accepted by server as peer {peer}"),
             WireEvent::FirmwareSaved { bytes } => println!("uploaded {bytes} bytes"),
+            WireEvent::Status { message } => println!("[status] {message}"),
+            WireEvent::TargetResolved { target, platform } => {
+                let platform = platform
+                    .map(|platform| platform.to_string())
+                    .unwrap_or_else(|| "unspecified".to_string());
+                println!("[target] {target} ({platform})");
+            }
             WireEvent::CommandStarted { phase, argv } => {
                 println!("[{}] {}", phase_name(phase), shellish(&argv));
             }
@@ -130,7 +137,7 @@ async fn run(remote: Remote, request: WireRequest, firmware: Option<PathBuf>) ->
                 success: request_success,
             } => success = Some(request_success),
             WireEvent::Error { message } => {
-                eprintln!("agent error: {message}");
+                eprintln!("server error: {message}");
                 success = Some(false);
             }
         }
@@ -141,7 +148,7 @@ async fn run(remote: Remote, request: WireRequest, firmware: Option<PathBuf>) ->
     match success {
         Some(true) => Ok(()),
         Some(false) => anyhow::bail!("remote command failed"),
-        None => anyhow::bail!("agent closed without a completion event"),
+        None => anyhow::bail!("server closed without a completion event"),
     }
 }
 

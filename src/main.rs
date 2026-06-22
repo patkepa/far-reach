@@ -1,16 +1,16 @@
-mod agent;
 mod client;
 mod config;
 mod identity;
 mod protocol;
 mod runner;
+mod serve;
 
 use std::{net::SocketAddr, path::PathBuf};
 
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
 use iroh::{EndpointId, RelayUrl};
-use protocol::DeviceOverrides;
+use protocol::{DeviceOverrides, Platform};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 #[derive(Debug, Parser)]
@@ -22,8 +22,8 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Run the Raspberry Pi side bench agent.
-    Agent(AgentArgs),
+    /// Serve remote flashing requests from the bench host.
+    Serve(ServeArgs),
     /// Upload firmware and run the target flash command.
     Flash(FlashArgs),
     /// Run the target monitor command and stream logs.
@@ -35,36 +35,39 @@ enum Command {
 }
 
 #[derive(Debug, Args)]
-struct AgentArgs {
-    /// Agent config file.
-    #[arg(long, default_value = "far-reach.toml")]
+struct ServeArgs {
+    /// Server config file.
+    #[arg(long, default_value = "farreach.toml")]
     config: PathBuf,
-    /// Iroh secret key file for this agent.
-    #[arg(long, default_value = ".far-reach/agent.key")]
+    /// Iroh secret key file for this server.
+    #[arg(long, default_value = ".farreach/server.key")]
     identity: PathBuf,
 }
 
 #[derive(Debug, Args)]
 struct RemoteArgs {
     /// Iroh secret key file for this client.
-    #[arg(long, default_value = ".far-reach/client.key")]
+    #[arg(long, default_value = ".farreach/client.key")]
     identity: PathBuf,
-    /// Remote agent endpoint ID.
+    /// Remote server endpoint ID.
     #[arg(long)]
     peer: EndpointId,
-    /// Remote agent relay URL, printed by `far-reach agent`.
+    /// Remote server relay URL, printed by `farreach serve`.
     #[arg(long)]
     relay_url: Option<RelayUrl>,
-    /// Optional direct UDP addresses printed by `far-reach agent`.
+    /// Optional direct UDP addresses printed by `farreach serve`.
     #[arg(long, value_parser, num_args = 0.., value_delimiter = ' ')]
     addr: Vec<SocketAddr>,
 }
 
 #[derive(Debug, Args)]
 struct TargetArgs {
-    /// Target name from the agent config.
+    /// Target name from the server config. If omitted, the server selects by --platform or by its only configured target.
     #[arg(long)]
-    target: String,
+    target: Option<String>,
+    /// Platform hint used by the server to pick the connected target automatically.
+    #[arg(long, value_enum)]
+    platform: Option<Platform>,
     /// Override target serial path, for example /dev/ttyUSB0.
     #[arg(long)]
     serial: Option<String>,
@@ -85,7 +88,7 @@ struct FlashArgs {
     /// Optional local build command to run before uploading the firmware.
     #[arg(long)]
     build_command: Option<String>,
-    /// Already-built local firmware image to upload to the remote agent.
+    /// Already-built local firmware image to upload to the remote server.
     #[arg(long)]
     firmware: PathBuf,
 }
@@ -101,7 +104,7 @@ struct MonitorArgs {
 #[derive(Debug, Args)]
 struct KeygenArgs {
     /// Destination key file.
-    #[arg(long, default_value = ".far-reach/client.key")]
+    #[arg(long, default_value = ".farreach/client.key")]
     identity: PathBuf,
     /// Replace an existing key.
     #[arg(long)]
@@ -114,7 +117,7 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
     match cli.command {
-        Command::Agent(args) => agent::run(args.config, args.identity).await,
+        Command::Serve(args) => serve::run(args.config, args.identity).await,
         Command::Flash(args) => {
             client::flash(
                 args.remote.into(),
@@ -155,6 +158,7 @@ impl From<TargetArgs> for DeviceOverrides {
     fn from(value: TargetArgs) -> Self {
         Self {
             target: value.target,
+            platform: value.platform,
             serial: value.serial,
             baud: value.baud,
             chip: value.chip,

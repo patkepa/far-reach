@@ -4,12 +4,15 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-pub const ALPN: &[u8] = b"far-reach/bench/0";
+pub const ALPN: &[u8] = b"farreach/bench/0";
 const MAX_FRAME_BYTES: u32 = 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceOverrides {
-    pub target: String,
+    #[serde(default)]
+    pub target: Option<String>,
+    #[serde(default)]
+    pub platform: Option<Platform>,
     #[serde(default)]
     pub serial: Option<String>,
     #[serde(default)]
@@ -41,6 +44,13 @@ pub enum WireEvent {
     FirmwareSaved {
         bytes: u64,
     },
+    Status {
+        message: String,
+    },
+    TargetResolved {
+        target: String,
+        platform: Option<Platform>,
+    },
     CommandStarted {
         phase: Phase,
         argv: Vec<String>,
@@ -71,6 +81,24 @@ pub enum WireEvent {
 pub enum Phase {
     Flash,
     Monitor,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub enum Platform {
+    Esp,
+    Stm32,
+    Nordic,
+}
+
+impl std::fmt::Display for Platform {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Esp => f.write_str("esp"),
+            Self::Stm32 => f.write_str("stm32"),
+            Self::Nordic => f.write_str("nordic"),
+        }
+    }
 }
 
 pub async fn write_json<W, T>(writer: &mut W, value: &T) -> Result<()>

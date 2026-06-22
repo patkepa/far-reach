@@ -8,8 +8,10 @@ use anyhow::{Context, Result};
 use iroh::EndpointId;
 use serde::Deserialize;
 
+use crate::protocol::Platform;
+
 #[derive(Debug, Deserialize)]
-pub struct AgentConfig {
+pub struct ServerConfig {
     #[serde(default)]
     pub authorized_peers: Vec<EndpointId>,
     pub work_dir: Option<PathBuf>,
@@ -19,6 +21,8 @@ pub struct AgentConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct TargetConfig {
+    #[serde(default)]
+    pub platform: Option<Platform>,
     #[serde(default)]
     pub flash: Option<Vec<String>>,
     #[serde(default)]
@@ -31,7 +35,7 @@ pub struct TargetConfig {
     pub chip: Option<String>,
 }
 
-pub fn load(path: &Path) -> Result<AgentConfig> {
+pub fn load(path: &Path) -> Result<ServerConfig> {
     let raw = fs::read_to_string(path)
         .with_context(|| format!("failed to read config {}", path.display()))?;
     toml::from_str(&raw).with_context(|| format!("failed to parse config {}", path.display()))
