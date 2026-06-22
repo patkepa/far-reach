@@ -1,16 +1,17 @@
-uyse std::{collections::BTreeMap, path::Path, process::Stdio};
+use std::{collections::BTreeMap, path::Path, process::Stdio};
 
 use anyhow::{Context, Result, bail};
 use tokio::{io::AsyncReadExt, process::Command};
 
 use crate::{
     config::TargetConfig,
-    protocol::{DeviceOverrides, Phase, WireEvent, write_json},
+    protocol::{DeviceOverrides, Phase, Platform, WireEvent, write_json},
 };
 
 #[derive(Debug, Clone)]
 pub struct ResolvedTarget {
     name: String,
+    platform: Option<Platform>,
     flash: Option<Vec<String>>,
     monitor: Option<Vec<String>>,
     serial: Option<String>,
@@ -23,18 +24,25 @@ impl ResolvedTarget {
         targets: &BTreeMap<String, TargetConfig>,
         device: DeviceOverrides,
     ) -> Result<Self> {
-        let config = targets
-            .get(&device.target)
-            .with_context(|| format!("unknown target '{}'", device.target))?;
+        let (name, config) = resolve_config(targets, device.target.as_deref(), device.platform)?;
 
         Ok(Self {
-            name: device.target,
+            name,
+            platform: config.platform,
             flash: config.flash.clone(),
             monitor: config.monitor.clone(),
             serial: device.serial.or_else(|| config.serial.clone()),
             baud: device.baud.or(config.baud),
             chip: device.chip.or_else(|| config.chip.clone()),
         })
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn platform(&self) -> Option<Platform> {
+        self.platform
     }
 
     pub fn render_flash(&self, firmware: &Path, firmware_name: &str) -> Result<Vec<String>> {
@@ -77,6 +85,13 @@ impl ResolvedTarget {
     ) -> Result<String> {
         let mut out = arg.replace("{target}", &self.name);
 
+        if out.contains("{platform}") {
+            let platform = self
+                .platform
+                .context("{platform} used but no platform is set")?;
+            out = out.replace("{platform}", &platform.to_string());
+        }
+
         if out.contains("{firmware}") {
             let firmware = firmware.context("{firmware} used without a firmware upload")?;
             out = out.replace("{firmware}", &firmware.display().to_string());
@@ -112,6 +127,57 @@ impl ResolvedTarget {
         }
 
         Ok(out)
+    }
+}
+
+fn resolve_config<'a>(
+    targets: &'a BTreeMap<String, TargetConfig>,
+    requested_target: Option<&str>,
+    requested_platform: Option<Platform>,
+) -> Result<(String, &'a TargetConfig)> {
+    if targets.is_empty() {
+        bail!("server config does not define any targets");
+    }
+
+    if let Some(target) = requested_target {
+        let config = targets
+            .get(target)
+            .with_context(|| format!("unknown target '{target}'"))?;
+
+        if let (Some(requested), Some(configured)) = (requested_platform, config.platform)
+            && requested != configured
+        {
+            bail!(
+                "target '{target}' is configured as platform '{configured}', but request asked for '{requested}'"
+            );
+        }
+
+        return Ok((target.to_string(), config));
+    }
+
+    let candidates = targets
+        .iter()
+        .filter(|(_, config)| {
+            requested_platform.is_none_or(|platform| config.platform == Some(platform))
+        })
+        .collect::<Vec<_>>();
+
+    match candidates.as_slice() {
+        [(name, config)] => Ok(((*name).clone(), *config)),
+        [] => {
+            let platform = requested_platform
+                .map(|platform| platform.to_string())
+                .unwrap_or_else(|| "unspecified".to_string());
+            bail!("no configured target matches platform '{platform}'")
+        }
+        many => {
+            let names = many
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            bail!("ambiguous target selection; specify --target. Matching targets: {names}")
+        }
     }
 }
 
@@ -206,6 +272,7 @@ mod tests {
     fn renders_command_placeholders() {
         let target = ResolvedTarget {
             name: "esp32c3".to_string(),
+            platform: Some(Platform::Esp),
             flash: None,
             monitor: None,
             serial: Some("/dev/ttyUSB0".to_string()),
@@ -241,5 +308,36 @@ mod tests {
                 "/tmp/fw.bin"
             ]
         );
+    }
+
+    #[test]
+    fn resolves_single_target_by_platform() {
+        let mut targets = BTreeMap::new();
+        targets.insert(
+            "desk-stm32".to_string(),
+            TargetConfig {
+                platform: Some(Platform::Stm32),
+                flash: None,
+                monitor: None,
+                serial: None,
+                baud: None,
+                chip: Some("STM32F407VGTx".to_string()),
+            },
+        );
+
+        let target = ResolvedTarget::resolve(
+            &targets,
+            DeviceOverrides {
+                target: None,
+                platform: Some(Platform::Stm32),
+                serial: None,
+                baud: None,
+                chip: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(target.name(), "desk-stm32");
+        assert_eq!(target.platform(), Some(Platform::Stm32));
     }
 }

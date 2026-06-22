@@ -52,6 +52,62 @@ monitor = ["probe-rs", "attach", "--chip", "{chip}"]
 
 Supported template values are `{target}`, `{platform}`, `{firmware}`, `{firmware_name}`, `{serial}`, `{baud}`, and `{chip}`.
 
+## End-to-end setup
+
+Install the same `farreach` binary on both machines:
+
+```sh
+cargo install --path .
+```
+
+On the Raspberry Pi, install the flashing tools needed for the devices physically connected to it:
+
+```sh
+cargo install probe-rs-tools
+cargo install espflash
+```
+
+Use `probe-rs` for supported STM32/Nordic SWD/JTAG workflows, usually with `.elf` or `.hex` artifacts. Raw `.bin` files can work too, but the flash command normally needs a base address. Use `espflash` for ESP serial flashing workflows.
+
+Start the server on the Pi:
+
+```sh
+farreach serve --identity .farreach/server.key --config farreach.toml
+```
+
+The Pi prints a server endpoint ID and relay URL. Keep that process running.
+
+Build firmware on your workstation with whatever toolchain the project uses:
+
+```sh
+make
+cmake --build build
+cargo build --release
+```
+
+Then flash the built artifact remotely:
+
+```sh
+farreach flash \
+  --identity .farreach/client.key \
+  --peer <server-endpoint-id> \
+  --relay-url <server-relay-url> \
+  --platform stm32 \
+  --firmware build/app.elf
+```
+
+The uploaded file can come from a C, C++, Rust, Zig, or other embedded codebase. `farreach` only transports the artifact and metadata; the configured flasher decides how to interpret the file.
+
+If multiple connected boards share the same platform, specify the configured target name:
+
+```sh
+farreach flash \
+  --peer <server-endpoint-id> \
+  --relay-url <server-relay-url> \
+  --target stm32 \
+  --firmware build/app.elf
+```
+
 ## Usage
 
 Generate stable identities once:
