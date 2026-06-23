@@ -76,13 +76,13 @@ fn print_server_addressing(endpoint: &Endpoint) {
     println!("client example:");
     if let Some(relay_url) = addr.relay_urls().next() {
         println!(
-            "  farreach flash --peer {} --relay-url {} --target <target> --firmware <firmware>",
+            "  fr flash --peer {} --relay-url {} --target <target> --firmware <firmware>",
             endpoint.id(),
             relay_url
         );
     } else {
         println!(
-            "  farreach flash --peer {} --target <target> --firmware <firmware>",
+            "  fr flash --peer {} --target <target> --firmware <firmware>",
             endpoint.id()
         );
     }

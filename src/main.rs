@@ -52,10 +52,10 @@ struct RemoteArgs {
     /// Remote server endpoint ID.
     #[arg(long)]
     peer: EndpointId,
-    /// Remote server relay URL, printed by `farreach serve`.
+    /// Remote server relay URL, printed by `fr serve`.
     #[arg(long)]
     relay_url: Option<RelayUrl>,
-    /// Optional direct UDP addresses printed by `farreach serve`.
+    /// Optional direct UDP addresses printed by `fr serve`.
     #[arg(long, value_parser, num_args = 0.., value_delimiter = ' ')]
     addr: Vec<SocketAddr>,
 }

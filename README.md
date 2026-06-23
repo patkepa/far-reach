@@ -7,7 +7,7 @@ The bench host owns the local USB/JTAG/UART connections. Your workstation builds
 ## Current shape
 
 - Transport: Iroh endpoint identity, relay/hole-punching, custom ALPN.
-- Same binary on both sides: run `farreach serve` on the Raspberry Pi, and `farreach flash` or `farreach monitor` from your workstation.
+- Same binary on both sides: run `fr serve` on the Raspberry Pi, and `fr flash` or `fr monitor` from your workstation.
 - Flash/log backend: command templates configured per target, so existing tools do chip-specific work.
 - Build policy: firmware is always built on the workstation. The server receives bytes and flashes; it does not run project builds.
 - Target selection: the request may specify `--platform esp|stm32|nordic` or `--target <name>`. If there is only one configured target, the server can select it automatically.
@@ -54,7 +54,7 @@ Supported template values are `{target}`, `{platform}`, `{firmware}`, `{firmware
 
 ## End-to-end setup
 
-Install the same `farreach` binary on both machines:
+Install the same `fr` command on both machines:
 
 ```sh
 cargo install --path .
@@ -72,7 +72,7 @@ Use `probe-rs` for supported STM32/Nordic SWD/JTAG workflows, usually with `.elf
 Start the server on the Pi:
 
 ```sh
-farreach serve --identity .farreach/server.key --config farreach.toml
+fr serve --identity .farreach/server.key --config farreach.toml
 ```
 
 The Pi prints a server endpoint ID and relay URL. Keep that process running.
@@ -88,7 +88,7 @@ cargo build --release
 Then flash the built artifact remotely:
 
 ```sh
-farreach flash \
+fr flash \
   --identity .farreach/client.key \
   --peer <server-endpoint-id> \
   --relay-url <server-relay-url> \
@@ -101,7 +101,7 @@ The uploaded file can come from a C, C++, Rust, Zig, or other embedded codebase.
 If multiple connected boards share the same platform, specify the configured target name:
 
 ```sh
-farreach flash \
+fr flash \
   --peer <server-endpoint-id> \
   --relay-url <server-relay-url> \
   --target stm32 \
@@ -113,20 +113,20 @@ farreach flash \
 Generate stable identities once:
 
 ```sh
-farreach keygen --identity .farreach/server.key
-farreach keygen --identity .farreach/client.key
+fr keygen --identity .farreach/server.key
+fr keygen --identity .farreach/client.key
 ```
 
 Run the server on the Raspberry Pi:
 
 ```sh
-farreach serve --identity .farreach/server.key --config farreach.toml
+fr serve --identity .farreach/server.key --config farreach.toml
 ```
 
 The server prints its endpoint ID, relay URL, and local addresses. From your workstation:
 
 ```sh
-farreach flash \
+fr flash \
   --identity .farreach/client.key \
   --peer <server-endpoint-id> \
   --relay-url <server-relay-url> \
@@ -137,7 +137,7 @@ farreach flash \
 Or run a local build first and then upload the resulting artifact:
 
 ```sh
-farreach flash \
+fr flash \
   --identity .farreach/client.key \
   --peer <server-endpoint-id> \
   --relay-url <server-relay-url> \
@@ -149,7 +149,7 @@ farreach flash \
 Monitor logs:
 
 ```sh
-farreach monitor \
+fr monitor \
   --identity .farreach/client.key \
   --peer <server-endpoint-id> \
   --relay-url <server-relay-url> \
@@ -159,7 +159,7 @@ farreach monitor \
 Flash, then immediately start the target monitor:
 
 ```sh
-farreach flash-monitor \
+fr flash-monitor \
   --identity .farreach/client.key \
   --peer <server-endpoint-id> \
   --relay-url <server-relay-url> \
@@ -170,5 +170,5 @@ farreach flash-monitor \
 You can override configured values from the client:
 
 ```sh
-farreach flash --target esp32c3 --serial /dev/ttyACM0 --baud 921600 --chip esp32c6 ...
+fr flash --target esp32c3 --serial /dev/ttyACM0 --baud 921600 --chip esp32c6 ...
 ```
