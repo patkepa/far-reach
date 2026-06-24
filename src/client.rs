@@ -30,24 +30,16 @@ pub async fn flash(
         run_local_build(&build_command).await?;
     }
 
-    let firmware_name = firmware
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("firmware.bin")
-        .to_string();
-    let firmware_len = fs::metadata(&firmware)
-        .await
-        .with_context(|| format!("failed to stat firmware {}", firmware.display()))?
-        .len();
+    let artifact = upload_artifact(firmware).await?;
 
     let request = WireRequest::Flash {
         device,
-        firmware_name,
-        firmware_len,
+        firmware_name: artifact.name,
+        firmware_len: artifact.len,
         monitor_after,
     };
 
-    run(remote, request, Some(firmware)).await
+    run(remote, request, Some(artifact.path)).await
 }
 
 async fn run_local_build(build_command: &str) -> Result<()> {
@@ -74,8 +66,43 @@ async fn run_local_build(build_command: &str) -> Result<()> {
     Ok(())
 }
 
-pub async fn monitor(remote: Remote, device: DeviceOverrides) -> Result<()> {
-    run(remote, WireRequest::Monitor { device }, None).await
+pub async fn monitor(
+    remote: Remote,
+    device: DeviceOverrides,
+    firmware: Option<PathBuf>,
+) -> Result<()> {
+    let artifact = match firmware {
+        Some(firmware) => Some(upload_artifact(firmware).await?),
+        None => None,
+    };
+
+    let request = WireRequest::Monitor {
+        device,
+        firmware_name: artifact.as_ref().map(|artifact| artifact.name.clone()),
+        firmware_len: artifact.as_ref().map(|artifact| artifact.len),
+    };
+
+    run(remote, request, artifact.map(|artifact| artifact.path)).await
+}
+
+struct UploadArtifact {
+    path: PathBuf,
+    name: String,
+    len: u64,
+}
+
+async fn upload_artifact(path: PathBuf) -> Result<UploadArtifact> {
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("firmware.bin")
+        .to_string();
+    let len = fs::metadata(&path)
+        .await
+        .with_context(|| format!("failed to stat firmware {}", path.display()))?
+        .len();
+
+    Ok(UploadArtifact { path, name, len })
 }
 
 async fn run(remote: Remote, request: WireRequest, firmware: Option<PathBuf>) -> Result<()> {

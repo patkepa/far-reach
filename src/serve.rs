@@ -165,12 +165,16 @@ async fn handle_connection(conn: Connection, config: Arc<ServerConfig>) -> Resul
                         format!("starting monitor for target '{}'", target.name()),
                     )
                     .await?;
-                    run_monitor(&mut send, &target).await
+                    run_monitor(&mut send, &target, Some(firmware.path()), &firmware_name).await
                 } else {
                     Ok(flash_ok)
                 }
             }
-            WireRequest::Monitor { device } => {
+            WireRequest::Monitor {
+                device,
+                firmware_name,
+                firmware_len,
+            } => {
                 status(
                     &mut send,
                     "resolving target for monitor session".to_string(),
@@ -178,12 +182,27 @@ async fn handle_connection(conn: Connection, config: Arc<ServerConfig>) -> Resul
                 .await?;
                 let target = ResolvedTarget::resolve(&config.targets, device)?;
                 target_resolved(&mut send, &target).await?;
+                let monitor_firmware =
+                    receive_optional_firmware(&mut recv, config.work_dir.as_deref(), firmware_name, firmware_len)
+                        .await?;
+                let monitor_firmware_path = monitor_firmware.as_ref().map(StagedFirmware::path);
+                let monitor_firmware_name = monitor_firmware
+                    .as_ref()
+                    .and_then(|firmware| firmware.path().file_name())
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("");
                 status(
                     &mut send,
                     format!("starting monitor for target '{}'", target.name()),
                 )
                 .await?;
-                run_monitor(&mut send, &target).await
+                run_monitor(
+                    &mut send,
+                    &target,
+                    monitor_firmware_path,
+                    monitor_firmware_name,
+                )
+                .await
             }
         }
     }
@@ -234,6 +253,26 @@ struct StagedFirmware {
 impl StagedFirmware {
     fn path(&self) -> &Path {
         &self.path
+    }
+}
+
+async fn receive_optional_firmware<R>(
+    recv: &mut R,
+    work_dir: Option<&Path>,
+    firmware_name: Option<String>,
+    firmware_len: Option<u64>,
+) -> Result<Option<StagedFirmware>>
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    match (firmware_name, firmware_len) {
+        (Some(firmware_name), Some(firmware_len)) => {
+            receive_firmware(recv, work_dir, &firmware_name, firmware_len)
+                .await
+                .map(Some)
+        }
+        (None, None) => Ok(None),
+        _ => anyhow::bail!("monitor request must include both firmware_name and firmware_len"),
     }
 }
 

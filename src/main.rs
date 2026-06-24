@@ -100,6 +100,9 @@ struct MonitorArgs {
     remote: RemoteArgs,
     #[command(flatten)]
     target: TargetArgs,
+    /// Optional local firmware or ELF image to upload for monitor commands that use {firmware}.
+    #[arg(long)]
+    firmware: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -139,7 +142,9 @@ async fn main() -> Result<()> {
             )
             .await
         }
-        Command::Monitor(args) => client::monitor(args.remote.into(), args.target.into()).await,
+        Command::Monitor(args) => {
+            client::monitor(args.remote.into(), args.target.into(), args.firmware).await
+        }
         Command::Keygen(args) => identity::generate(&args.identity, args.force),
     }
 }

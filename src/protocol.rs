@@ -32,6 +32,10 @@ pub enum WireRequest {
     },
     Monitor {
         device: DeviceOverrides,
+        #[serde(default)]
+        firmware_name: Option<String>,
+        #[serde(default)]
+        firmware_len: Option<u64>,
     },
 }
 

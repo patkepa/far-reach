@@ -60,14 +60,18 @@ impl ResolvedTarget {
         self.render(template, Some(firmware), firmware_name)
     }
 
-    pub fn render_monitor(&self) -> Result<ResolvedMonitor> {
+    pub fn render_monitor(
+        &self,
+        firmware: Option<&Path>,
+        firmware_name: &str,
+    ) -> Result<ResolvedMonitor> {
         let template = self
             .monitor
             .as_ref()
             .context("target does not define a monitor backend")?;
         match template {
             MonitorConfig::Command(template) => self
-                .render(template, None, "")
+                .render(template, firmware, firmware_name)
                 .map(ResolvedMonitor::Command),
             MonitorConfig::SeggerRtt(config) => Ok(ResolvedMonitor::SeggerRtt(config.clone())),
         }
@@ -266,11 +270,16 @@ where
     Ok(success)
 }
 
-pub async fn run_monitor<S>(send: &mut S, target: &ResolvedTarget) -> Result<bool>
+pub async fn run_monitor<S>(
+    send: &mut S,
+    target: &ResolvedTarget,
+    firmware: Option<&Path>,
+    firmware_name: &str,
+) -> Result<bool>
 where
     S: tokio::io::AsyncWrite + Unpin,
 {
-    match target.render_monitor()? {
+    match target.render_monitor(firmware, firmware_name)? {
         ResolvedMonitor::Command(argv) => run_command(send, Phase::Monitor, argv).await,
         ResolvedMonitor::SeggerRtt(config) => segger_rtt::run(send, &config).await,
     }
@@ -328,6 +337,48 @@ mod tests {
                 "--chip",
                 "esp32c3",
                 "/tmp/fw.bin"
+            ]
+        );
+    }
+
+    #[test]
+    fn renders_monitor_with_uploaded_firmware() {
+        let target = ResolvedTarget {
+            name: "nrf52".to_string(),
+            platform: Some(Platform::Nordic),
+            flash: None,
+            monitor: Some(MonitorConfig::Command(vec![
+                "probe-rs".to_string(),
+                "attach".to_string(),
+                "--chip".to_string(),
+                "{chip}".to_string(),
+                "{firmware}".to_string(),
+                "--log-format".to_string(),
+                "{firmware_name}".to_string(),
+            ])),
+            serial: None,
+            baud: None,
+            chip: Some("nRF52840_xxAA".to_string()),
+        };
+
+        let rendered = match target
+            .render_monitor(Some(Path::new("/tmp/app.elf")), "app.elf")
+            .unwrap()
+        {
+            ResolvedMonitor::Command(argv) => argv,
+            ResolvedMonitor::SeggerRtt(_) => panic!("expected command monitor"),
+        };
+
+        assert_eq!(
+            rendered,
+            vec![
+                "probe-rs",
+                "attach",
+                "--chip",
+                "nRF52840_xxAA",
+                "/tmp/app.elf",
+                "--log-format",
+                "app.elf"
             ]
         );
     }

@@ -26,7 +26,7 @@ Create `farreach.toml` on the Raspberry Pi:
 # Optional. If non-empty, only these Iroh endpoint IDs can connect.
 authorized_peers = []
 
-# Optional. Firmware uploads are staged here while flash commands run.
+# Optional. Firmware and monitor symbol uploads are staged here while commands run.
 work_dir = ".farreach/work"
 
 [targets.esp32c3]
@@ -47,7 +47,7 @@ monitor = ["probe-rs", "attach", "--chip", "{chip}"]
 platform = "nordic"
 chip = "nRF52840_xxAA"
 flash = ["probe-rs", "download", "--chip", "{chip}", "{firmware}"]
-monitor = ["probe-rs", "attach", "--chip", "{chip}"]
+monitor = ["probe-rs", "attach", "--chip", "{chip}", "{firmware}"]
 
 [targets.nrf52-rtt]
 platform = "nordic"
@@ -56,7 +56,7 @@ flash = ["probe-rs", "download", "--chip", "{chip}", "{firmware}"]
 monitor = { type = "segger-rtt", host = "127.0.0.1", port = 19021 }
 ```
 
-Supported template values are `{target}`, `{platform}`, `{firmware}`, `{firmware_name}`, `{serial}`, `{baud}`, and `{chip}`. Command monitor backends use the legacy array form. SEGGER RTT monitor backends use the object form and stream bytes from SEGGER's RTT Telnet endpoint, which is usually exposed locally on port `19021` by J-Link GDB Server or another SEGGER RTT server.
+Supported template values are `{target}`, `{platform}`, `{firmware}`, `{firmware_name}`, `{serial}`, `{baud}`, and `{chip}`. For `flash-monitor`, monitor commands can use `{firmware}` and `{firmware_name}` from the just-uploaded artifact. For standalone `monitor`, those values are only available when `--firmware` is provided. Command monitor backends use the legacy array form. SEGGER RTT monitor backends use the object form and stream bytes from SEGGER's RTT Telnet endpoint, which is usually exposed locally on port `19021` by J-Link GDB Server or another SEGGER RTT server.
 
 ## End-to-end setup
 
@@ -160,6 +160,17 @@ fr monitor \
   --peer <server-endpoint-id> \
   --relay-url <server-relay-url> \
   --platform esp
+```
+
+For a probe-rs RTT or defmt monitor command that uses `{firmware}`, upload the ELF used for symbol and metadata decoding:
+
+```sh
+fr monitor \
+  --identity .farreach/client.key \
+  --peer <server-endpoint-id> \
+  --relay-url <server-relay-url> \
+  --platform nordic \
+  --firmware target/thumbv7em-none-eabihf/release/app
 ```
 
 For SEGGER RTT logs, configure the target with `monitor = { type = "segger-rtt" }` or override `host`, `port`, and `connect_timeout_ms` as needed. The bench host must already have a SEGGER/J-Link process exposing the RTT Telnet endpoint before `fr monitor` connects.
