@@ -3,6 +3,7 @@ mod config;
 mod identity;
 mod protocol;
 mod runner;
+mod segger_rtt;
 mod serve;
 
 use std::{net::SocketAddr, path::PathBuf};

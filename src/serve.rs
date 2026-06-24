@@ -16,7 +16,7 @@ use crate::{
     config::{self, ServerConfig},
     identity,
     protocol::{ALPN, Phase, WireEvent, WireRequest, read_json, write_json},
-    runner::{ResolvedTarget, run_command},
+    runner::{ResolvedTarget, run_command, run_monitor},
 };
 
 pub async fn run(config_path: PathBuf, identity_path: PathBuf) -> Result<()> {
@@ -165,8 +165,7 @@ async fn handle_connection(conn: Connection, config: Arc<ServerConfig>) -> Resul
                         format!("starting monitor for target '{}'", target.name()),
                     )
                     .await?;
-                    let argv = target.render_monitor()?;
-                    run_command(&mut send, Phase::Monitor, argv).await
+                    run_monitor(&mut send, &target).await
                 } else {
                     Ok(flash_ok)
                 }
@@ -184,8 +183,7 @@ async fn handle_connection(conn: Connection, config: Arc<ServerConfig>) -> Resul
                     format!("starting monitor for target '{}'", target.name()),
                 )
                 .await?;
-                let argv = target.render_monitor()?;
-                run_command(&mut send, Phase::Monitor, argv).await
+                run_monitor(&mut send, &target).await
             }
         }
     }

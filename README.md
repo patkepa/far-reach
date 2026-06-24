@@ -48,9 +48,15 @@ platform = "nordic"
 chip = "nRF52840_xxAA"
 flash = ["probe-rs", "download", "--chip", "{chip}", "{firmware}"]
 monitor = ["probe-rs", "attach", "--chip", "{chip}"]
+
+[targets.nrf52-rtt]
+platform = "nordic"
+chip = "nRF52840_xxAA"
+flash = ["probe-rs", "download", "--chip", "{chip}", "{firmware}"]
+monitor = { type = "segger-rtt", host = "127.0.0.1", port = 19021 }
 ```
 
-Supported template values are `{target}`, `{platform}`, `{firmware}`, `{firmware_name}`, `{serial}`, `{baud}`, and `{chip}`.
+Supported template values are `{target}`, `{platform}`, `{firmware}`, `{firmware_name}`, `{serial}`, `{baud}`, and `{chip}`. Command monitor backends use the legacy array form. SEGGER RTT monitor backends use the object form and stream bytes from SEGGER's RTT Telnet endpoint, which is usually exposed locally on port `19021` by J-Link GDB Server or another SEGGER RTT server.
 
 ## End-to-end setup
 
@@ -155,6 +161,8 @@ fr monitor \
   --relay-url <server-relay-url> \
   --platform esp
 ```
+
+For SEGGER RTT logs, configure the target with `monitor = { type = "segger-rtt" }` or override `host`, `port`, and `connect_timeout_ms` as needed. The bench host must already have a SEGGER/J-Link process exposing the RTT Telnet endpoint before `fr monitor` connects.
 
 Flash, then immediately start the target monitor:
 

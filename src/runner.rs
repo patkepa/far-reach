@@ -4,8 +4,9 @@ use anyhow::{Context, Result, bail};
 use tokio::{io::AsyncReadExt, process::Command};
 
 use crate::{
-    config::TargetConfig,
+    config::{MonitorConfig, SeggerRttConfig, TargetConfig},
     protocol::{DeviceOverrides, Phase, Platform, WireEvent, write_json},
+    segger_rtt,
 };
 
 #[derive(Debug, Clone)]
@@ -13,10 +14,16 @@ pub struct ResolvedTarget {
     name: String,
     platform: Option<Platform>,
     flash: Option<Vec<String>>,
-    monitor: Option<Vec<String>>,
+    monitor: Option<MonitorConfig>,
     serial: Option<String>,
     baud: Option<u32>,
     chip: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub enum ResolvedMonitor {
+    Command(Vec<String>),
+    SeggerRtt(SeggerRttConfig),
 }
 
 impl ResolvedTarget {
@@ -53,12 +60,17 @@ impl ResolvedTarget {
         self.render(template, Some(firmware), firmware_name)
     }
 
-    pub fn render_monitor(&self) -> Result<Vec<String>> {
+    pub fn render_monitor(&self) -> Result<ResolvedMonitor> {
         let template = self
             .monitor
             .as_ref()
-            .context("target does not define a monitor command")?;
-        self.render(template, None, "")
+            .context("target does not define a monitor backend")?;
+        match template {
+            MonitorConfig::Command(template) => self
+                .render(template, None, "")
+                .map(ResolvedMonitor::Command),
+            MonitorConfig::SeggerRtt(config) => Ok(ResolvedMonitor::SeggerRtt(config.clone())),
+        }
     }
 
     fn render(
@@ -252,6 +264,16 @@ where
     .await?;
 
     Ok(success)
+}
+
+pub async fn run_monitor<S>(send: &mut S, target: &ResolvedTarget) -> Result<bool>
+where
+    S: tokio::io::AsyncWrite + Unpin,
+{
+    match target.render_monitor()? {
+        ResolvedMonitor::Command(argv) => run_command(send, Phase::Monitor, argv).await,
+        ResolvedMonitor::SeggerRtt(config) => segger_rtt::run(send, &config).await,
+    }
 }
 
 async fn read_optional<R>(reader: &mut Option<R>, buf: &mut [u8]) -> std::io::Result<usize>
